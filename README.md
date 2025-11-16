@@ -1,8 +1,8 @@
-# 🏥 Diabetic Retinopathy Detection AI
+# Diabetic Retinopathy Detection AI
 
 Advanced AI application for detecting diabetic retinopathy using ResNet50 architecture.
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 git clone <your-repo-url>
@@ -12,7 +12,7 @@ python setup_model.py
 python enhanced_desktop_app_v2.py
 ```
 
-## ✨ Features
+## Features
 
 - **85%+ Accuracy** with ResNet50 + ImageNet
 - **5 Severity Levels** (Normal to Proliferative)
@@ -20,7 +20,7 @@ python enhanced_desktop_app_v2.py
 - **Real-time Analysis** (2-5 seconds)
 - **Professional UI** for medical use
 
-## 📊 Classification Levels
+## Classification Levels
 
 | Level | Description | Action Required |
 |-------|-------------|----------------|
@@ -30,18 +30,18 @@ python enhanced_desktop_app_v2.py
 | Severe | Immediate treatment | Urgent medical care |
 | Proliferative | Advanced stage | **EMERGENCY** specialist care |
 
-## 🎯 Usage
+## Usage
 
 1. Run `python enhanced_desktop_app_v2.py`
 2. Upload retinal fundus image
 3. Click "AI Analysis"
 4. View results and save PDF report
 
-## ⚠️ Medical Disclaimer
+## Medical Disclaimer
 
 This AI tool is for **screening purposes only**. Always consult qualified ophthalmologists for proper medical diagnosis and treatment decisions.
 
-## 🛠️ Technical Specs
+## Technical Specs
 
 - **Model**: ResNet50 + ImageNet Pre-trained
 - **Input**: 512×512 retinal images
