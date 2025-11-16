@@ -41,6 +41,9 @@ python enhanced_desktop_app_v2.py
 
 This AI tool is for **screening purposes only**. Always consult qualified ophthalmologists for proper medical diagnosis and treatment decisions.
 
+## Image Source
+Google Images
+
 ## Technical Specs
 
 - **Model**: ResNet50 + ImageNet Pre-trained
