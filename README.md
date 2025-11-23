@@ -1,6 +1,9 @@
 # Diabetic Retinopathy Detection AI
+<img width="2239" height="1336" alt="image" src="https://github.com/user-attachments/assets/2856a7e6-8389-4ccd-910c-81a8cc6bdf41" />
+
 
 Advanced AI application for detecting diabetic retinopathy using ResNet50 architecture.
+<img width="3744" height="1206" alt="image" src="https://github.com/user-attachments/assets/11e9828f-faaa-41ef-86ac-d236cdd0f919" />
 
 ## Quick Start
 
