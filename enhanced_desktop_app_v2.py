@@ -443,7 +443,7 @@ diagnosis and treatment decisions.
                 return False, "Invalid shape."
             circularity = 4 * np.pi * (area / (perimeter * perimeter))
             
-            if circularity < 0.6:  # Circle is 1.0, allow some deviation but not too much
+            if circularity < 0.45:  # Circle is 1.0, allow some deviation but not too much
                 return False, f"Shape is not circular enough (circularity: {circularity:.2f}). Retinal images typically have a distinct circular boundary."
                 
             # 2. Blood Vessel / Texture Verification
@@ -458,9 +458,9 @@ diagnosis and treatment decisions.
             edges_inside = cv2.bitwise_and(edges, edges, mask=mask)
             edge_density = np.sum(edges_inside > 0) / area
             
-            if edge_density < 0.01:
+            if edge_density < 0.002:
                 return False, "No vessel-like structures detected. This image lacks the texture of a real retina."
-            if edge_density > 0.15:
+            if edge_density > 0.35:
                 return False, "Too much high-frequency noise or edges (unlikely to be a retina)."
                 
             # 3. Check for typical reddish hue
