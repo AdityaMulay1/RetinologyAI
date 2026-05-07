@@ -23,16 +23,87 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import tempfile
-
+import sqlite3
+import cv2
+import pymongo
+from dotenv import load_dotenv
 class EnhancedMedicalApp:
     def __init__(self, root):
         self.root = root
         self.setup_window()
         self.setup_styles()
+        self.init_database()
         self.load_enhanced_model()
         self.create_ui()
         self.current_image_path = None
         self.last_analysis_results = None
+        
+    def init_database(self):
+        load_dotenv()
+        
+        # 1. Try to connect to MongoDB
+        self.use_mongodb = False
+        self.mongo_collection = None
+        try:
+            mongo_uri = os.environ.get('MONGODB_URI', 'mongodb://localhost:27017/')
+            self.mongo_client = pymongo.MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+            # Test connection
+            self.mongo_client.server_info()
+            self.db = self.mongo_client['retinology_ai']
+            self.mongo_collection = self.db['analysis_history']
+            self.use_mongodb = True
+            print("Successfully connected to MongoDB")
+        except Exception as e:
+            print(f"MongoDB connection failed: {e}. Falling back to SQLite only.")
+            
+        # 2. Always init SQLite as fallback/local storage
+        try:
+            self.conn = sqlite3.connect('patients_history.db', check_same_thread=False)
+            self.cursor = self.conn.cursor()
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS analysis_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    analysis_date TEXT,
+                    image_path TEXT,
+                    diagnosis TEXT,
+                    confidence REAL,
+                    severity_level INTEGER
+                )
+            ''')
+            self.conn.commit()
+        except Exception as e:
+            print(f"Database init error: {e}")
+            
+    def save_to_database(self, results):
+        # Save to MongoDB if available
+        if self.use_mongodb and self.mongo_collection is not None:
+            try:
+                doc = {
+                    'analysis_date': results['analysis_time'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'image_path': results['image_path'],
+                    'diagnosis': results['diagnosis'],
+                    'confidence': results['confidence'],
+                    'severity_level': results['prediction']
+                }
+                self.mongo_collection.insert_one(doc)
+            except Exception as e:
+                print(f"MongoDB save error: {e}")
+
+        # Always save to SQLite
+        try:
+            self.cursor.execute('''
+                INSERT INTO analysis_history (analysis_date, image_path, diagnosis, confidence, severity_level)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                results['analysis_time'].strftime('%Y-%m-%d %H:%M:%S'),
+                results['image_path'],
+                results['diagnosis'],
+                results['confidence'],
+                results['prediction']
+            ))
+            self.conn.commit()
+        except Exception as e:
+            print(f"Database save error: {e}")
         
     def setup_window(self):
         self.root.title("🏥 Retinology AI - Diabetic Retinopathy Detection")
@@ -310,6 +381,15 @@ diagnosis and treatment decisions.
             messagebox.showwarning("No Image", "Please upload an image first.")
             return
             
+        # Validate if image is a retinal scan
+        is_valid, msg = self.validate_retinal_image(self.current_image_path)
+        if not is_valid:
+            messagebox.showerror(
+                "Invalid Image Detected", 
+                f"The uploaded image does not appear to be a valid retinal fundus scan.\n\nReason: {msg}\n\nPlease upload a valid retinal image."
+            )
+            return
+            
         self.analyze_btn.configure(state='disabled')
         self.progress.start(10)
         self.status_label.configure(text="🚀 AI analyzing...")
@@ -328,6 +408,74 @@ diagnosis and treatment decisions.
             
         except Exception as e:
             self.root.after(0, self.display_results, 0, 0.75)
+            
+    def validate_retinal_image(self, image_path):
+        """Advanced OpenCV check to ensure the image is a valid retinal fundus scan."""
+        try:
+            # Read image using OpenCV
+            img = cv2.imread(image_path)
+            if img is None:
+                return False, "Failed to read image with OpenCV."
+                
+            # Resize for consistent processing
+            img = cv2.resize(img, (800, 800))
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            
+            # 1. Circular Mask Detection (Fundus images usually have a circular FOV)
+            # Threshold to find the bright circle against dark background
+            _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if not contours:
+                return False, "No discernible structure found (missing circular field of view)."
+                
+            # Find the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            area = cv2.contourArea(largest_contour)
+            
+            # Check if area is substantial (at least 20% of image)
+            if area < (800 * 800 * 0.2):
+                return False, "Does not match fundus camera field of view (missing large circular mask)."
+                
+            # Check circularity
+            perimeter = cv2.arcLength(largest_contour, True)
+            if perimeter == 0:
+                return False, "Invalid shape."
+            circularity = 4 * np.pi * (area / (perimeter * perimeter))
+            
+            if circularity < 0.6:  # Circle is 1.0, allow some deviation but not too much
+                return False, f"Shape is not circular enough (circularity: {circularity:.2f}). Retinal images typically have a distinct circular boundary."
+                
+            # 2. Blood Vessel / Texture Verification
+            # Apply CLAHE to enhance contrast
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            cl1 = clahe.apply(gray)
+            
+            # Edge detection as a simpler proxy for vessels
+            edges = cv2.Canny(cl1, 50, 150)
+            
+            # Only consider edges inside the mask
+            edges_inside = cv2.bitwise_and(edges, edges, mask=mask)
+            edge_density = np.sum(edges_inside > 0) / area
+            
+            if edge_density < 0.01:
+                return False, "No vessel-like structures detected. This image lacks the texture of a real retina."
+            if edge_density > 0.15:
+                return False, "Too much high-frequency noise or edges (unlikely to be a retina)."
+                
+            # 3. Check for typical reddish hue
+            b, g, r = cv2.split(img)
+            # Compute mean only within the mask
+            mean_r = cv2.mean(r, mask=mask)[0]
+            mean_g = cv2.mean(g, mask=mask)[0]
+            mean_b = cv2.mean(b, mask=mask)[0]
+            
+            if mean_r < mean_g or mean_r < mean_b:
+                return False, "Color distribution doesn't match a retinal scan (lacks dominant red/orange hue)."
+                
+            return True, "Valid retinal image"
+        except Exception as e:
+            return False, f"Validation error: {str(e)}"
             
     def predict_with_enhanced_model(self):
         try:
@@ -420,6 +568,9 @@ diagnosis and treatment decisions.
             'analysis_time': analysis_time,
             'image_path': self.current_image_path
         }
+        
+        # Save to database
+        self.save_to_database(self.last_analysis_results)
         
         # Get detailed image analysis
         image_details = self.get_detailed_image_analysis()
